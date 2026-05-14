@@ -1,52 +1,94 @@
-import pandas as pd
+def get_stats(df, col: str, limit=1e-6):
+        """
+        df is passed by reference, but the operation df[boolean]
+        creates new dataframe
+        
+        Args:
+            df (pandas.Dataframe)
+            col (str): column to filter by
+            limit (float): limiting value to filter by
+        Returns:
+            void
+        """
+        temp_df = df[df.loc[:,col] < limit]
+        print("number of Genes with {} less than {}".format(col, limit), 
+                temp_df.shape[0], 
+                temp_df.loc[:,'sigma'].max(),
+                temp_df.loc[:,'max'].max()) 
 
-path = ""
-df_base = pd.read_csv(path+"Liver_HEIDI_complete_ensembl_symbol.csv")
+def significant_gene_filter(path: str,
+                            min_avg = 0.1,
+                            min_sigma = 0.1,
+                            use_cudf = False,
+                            verbose = 0
+                            ):
+    """
+    Preprocess/filter the gene expression data based on minimum
+    avergae, varaince across sample dataset
+    
+    Args:
+        path (str): path to csv files folder
+        min_avg (float): minimum averge to filter by
+        min_sigma (float): minimum variance to filter by
+        verbose (bool): print condition
+        use_cudf (bool): use gpu for data preprocessing
 
-print("Number of genes: ", df_base.shape[0])
+    Returns:
+        pandas.Dataframe: preprocessed data
 
-# finding last row with valid gene symbol
-gene_list_last_index = (df_base["Gene Symbol"] == "-").idxmax()
+    Raises:
+        FileNotFoundError: if corresponding file can't be found in path
+        
+    Example:
+        >>> gene_df = significant_gene_filter(path="data/")
+    """
+    if not use_cudf:
+        import pandas as pd
+    
+    df_base = pd.read_csv(path + 
+                    "Liver_HEIDI_complete_ensembl_symbol.csv")
 
-print("Number of nan's: ", df_base.iloc[:,2:].apply(pd.to_numeric, 
-                                errors='coerce').isna().sum().sum())
+    if verbose: print("Number of genes: ", df_base.shape[0])
 
-#truncating till that row
-df_trunk = df_base.iloc[:gene_list_last_index]
-df_trunk = df_trunk.drop(columns=["Ensembl Gene ID"])
-df_trunk = df_trunk.set_index("Gene Symbol")
+    # finding last row with valid gene symbol
+    gene_list_last_index = (df_base["Gene Symbol"] == "-").idxmax()
 
-# Adding a column for average gene expression across all days and all chikens for prelim analysis
-df_trunk.insert(0, "avg", df_trunk.iloc[:, 1:].sum(axis=1)/(df_trunk.shape[1]-1))
-df_trunk.insert(1, "sigma", df_trunk.iloc[:,1:].var(axis=1))
-df_trunk.insert(2, "max", df_trunk.iloc[:,1:].max(axis=1))
+    # printing number of nans
+    if verbose: print("Number of nan's: ", 
+                      df_base.iloc[:,2:].apply(pd.to_numeric, 
+                        errors='coerce').isna().sum().sum())
 
-df = df_trunk
+    # omitting genes without any names
+    df_trunk = df_base.iloc[:gene_list_last_index]
+    df_trunk = df_trunk.drop(columns=["Ensembl Gene ID"])
+    df_trunk = df_trunk.set_index("Gene Symbol")
 
-Basic stats on average gene expression levels with their corresponding sigma
-#column 0 is avg, 1 is sigma, 2 is max
-ind = 0
-print("number of Genes and max-variance, avg less than 1e-6 and its max sigma/val:\t", df.loc[df.iloc[:,ind] < 1e-6, df.columns[0:2]].shape[0], "\t",  df.loc[df.iloc[:,ind] < 1e-6, df.columns[2]].max(), "\t", df.loc[df.iloc[:,ind] < 1e-6, df.columns[3]].max())
-print("number of Genes and max-variance, avg less than 1e-4 and its max sigma/val:\t", df.loc[df.iloc[:,ind] < 1e-4, df.columns[0:2]].shape[0], "\t",  df.loc[df.iloc[:,ind] < 1e-4, df.columns[2]].max(), "\t", df.loc[df.iloc[:,ind] < 1e-4, df.columns[3]].max())
-print("number of Genes and max-variance, avg less than 1e-2 and its max sigma/val:\t", df.loc[df.iloc[:,ind] < 1e-2, df.columns[0:2]].shape[0], "\t",  df.loc[df.iloc[:,ind] < 1e-2, df.columns[2]].max(), "\t", df.loc[df.iloc[:,ind] < 1e-2, df.columns[3]].max())
-print("number of Genes and max-variance, avg less than 1e-1 and its max sigma/val:\t", df.loc[df.iloc[:,ind] < 1e-1, df.columns[0:2]].shape[0], "\t",  df.loc[df.iloc[:,ind] < 1e-1, df.columns[2]].max(), "\t", df.loc[df.iloc[:,ind] < 1e-1, df.columns[3]].max())
+    
+    # Adding a column for average gene expression across all sample 
+    df_trunk.insert(0, "avg", df_trunk.iloc[:, 1:].sum(axis=1)\
+                                    /(df_trunk.shape[1]-1))
+    df_trunk.insert(1, "sigma", df_trunk.iloc[:,1:].var(axis=1))
+    df_trunk.insert(2, "max", df_trunk.iloc[:,1:].max(axis=1))
 
-df.loc[(df.loc[:,'avg'] < 1e-1) & (df.loc[:,'max'] > 5), df.columns[:3]]
+    if verbose: get_stats(df_trunk, 'avg', 1e-6)
+    if verbose: get_stats(df_trunk, 'avg', 1e-4)
 
-df = df[(df.loc[:,'avg'] > 1e-1)]
+    # filter based on avg, creates a new df    
+    df = df_trunk[(df_trunk.loc[:,'avg'] > min_avg)]
+    
+    if verbose: get_stats(df, 'sigma', 1e-2)
+    if verbose: get_stats(df, 'sigma', 1e-1)
 
-print("Number of genes left: ", df.shape[0])
+    # filter based on sigma, creates a new df
+    df = df[(df.loc[:,'sigma'] > min_sigma)]
 
-ind = 1
-print("number of Genes with variance less than 1e-6:\t", df.loc[df.iloc[:,ind] < 1e-6, :].shape[0], "\t", df.loc[df.iloc[:,ind] < 1e-6, df.columns[3]].max())
-print("number of Genes with variance less than 1e-4:\t", df.loc[df.iloc[:,ind] < 1e-4, :].shape[0], "\t", df.loc[df.iloc[:,ind] < 1e-4, df.columns[3]].max())
-print("number of Genes with variance less than 1e-2:\t", df.loc[df.iloc[:,ind] < 1e-2, :].shape[0], "\t", df.loc[df.iloc[:,ind] < 1e-2, df.columns[3]].max())
-print("number of Genes with variance less than 1e-1:\t", df.loc[df.iloc[:,ind] < 1e-1, :].shape[0], "\t", df.loc[df.iloc[:,ind] < 1e-1, df.columns[3]].max())
+    if verbose: print("Number of genes left: ", df.shape[0])
 
-df = df[(df.loc[:,'sigma'] > 1e-1)]
-print("Number of genes left: ", df.shape[0])
+    # Some metrics of the final database
+    if verbose: print("final, min of the avg values", df.loc[:,'avg'].min(),)
+    if verbose: print("final, min sigma values", df.loc[:,'sigma'].min())
+    
+    return df    
 
-# Some metrics of the final database
-print("Minimum of the avg values", df.loc[:,'avg'].min(),)
-print("Minimum sigma values", df.loc[:,'sigma'].min())
-#display(df.loc[df.loc[:,'sigma'] < 0.01, df.columns[:4]])
+path = "../data/"
+gene_df = significant_gene_filter(path, verbose=1)
