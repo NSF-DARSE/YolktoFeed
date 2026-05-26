@@ -3,6 +3,8 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
 
 
 def significant_gene_filter(path: str,
@@ -26,8 +28,8 @@ def significant_gene_filter(path: str,
         use_cudf (bool): use gpu for data preprocessing
 
     Returns:
-        pandas.Dataframe: filtered genes dataframe
-        list: list of expresssion cols
+        pandas.DataFrame: filtered genes dataframe
+        pandas.DataFrame: metadata df
 
     Raises:
         FileNotFoundError: if corresponding file can't be found in path
@@ -93,9 +95,9 @@ def significant_gene_filter(path: str,
     if verbose: print("Number of genes finale: ", df_filtered.shape[0])
 
     
-    return df_filtered, expr_cols, sample_meta   
+    return df_filtered, sample_meta   
 
-def pca_analysis(df_filtered, expr_cols):
+def pca_analysis(df_filtered):
     """
     runs PCA analysis on the filterd genes 
     Args:
@@ -110,11 +112,11 @@ def pca_analysis(df_filtered, expr_cols):
         FileNotFoundError: if corresponding file can't be found in path
         
     Example:
-        >>> Xpca, pca_t = pca_analysis(df_filtered, expr_cols)
+        >>> Xpca, pca_t = pca_analysis(df_filtered)
     
     """
     
-    expr = df_filtered[expr_cols].copy()
+    expr = df_filtered.copy()
     log_expr_vals = np.log2(expr.values + 1)
     log_expr = pd.DataFrame(log_expr_vals, index=expr.index, 
                                 columns=expr.columns)
@@ -169,11 +171,105 @@ def plot_pca_components(pca_t, Xpca, sample_meta, DAYS: list):
     plt.savefig(f"pca_components_in{DAYS}.png".replace(" ",""))
        
 
-path = "../data/"
-gene_df, expr_cols, sample_meta = significant_gene_filter(path, 
-                                    omit_days=[6], min_val=0.1, 
-                                    min_count_per_day=5,verbose=1)
 
-pca_t, Xpca = pca_analysis(gene_df, expr_cols)
+def differential_expression(df_filtered, sample_meta, padj_max=0.05, 
+                                        days_a=[4], days_b=[8]):
+    """
+    Getting the differntial expression of the 
+    """
+    expr = df_filtered.copy()
+    log_expr_vals = np.log2(expr.values + 1)
+    log_expr = pd.DataFrame(log_expr_vals, index=expr.index, 
+                                columns=expr.columns)
+    
+    day_a_samples = sample_meta[sample_meta['Day'].isin(days_a)]['Sample'].tolist()
+    day_b_samples = sample_meta[sample_meta['Day'].isin(days_b)]['Sample'].tolist()
+
+    #getting the mean across columns
+    day_a_mean   = log_expr[day_a_samples].mean(axis=1)
+    day_b_mean   = log_expr[day_b_samples].mean(axis=1)
+
+    lfc_rest        = day_a_mean - day_b_mean
+    prest_vals = []
+    for g in log_expr.index:
+        a = log_expr.loc[g, day_a_samples].values.astype(float)
+        b = log_expr.loc[g, day_b_samples].values.astype(float)
+
+        a = a[~np.isnan(a)]
+        b = b[~np.isnan(b)]
+
+        if len(a) < 2 or len(b) < 2:
+            p = 1.0
+        elif np.var(a) == 0 or np.var(b) == 0:
+            p = 1.0 if np.mean(a) == np.mean(b) else 0.0
+        else:
+            res = stats.ttest_ind(a, b, equal_var=False)
+            p = float(res.pvalue) if not np.isnan(res.pvalue) else 1.0
+
+        prest_vals.append(p)
+
+    
+    de_df = pd.DataFrame({'Gene': log_expr.index, 
+                        'LFC': lfc_rest.values, 'pval': prest_vals})
+    #raw p values may produce false positives
+    #benjamin-hochberg FDR false discover rate correction
+    de_df['padj'] = multipletests(de_df['pval'], method='fdr_bh')[1]
+
+    de_df['-log10p'] = -np.log10(np.clip(de_df['pval'], 1e-300, 1))
+    de_df['sig']     = (de_df['padj'] < padj_max) & (de_df['LFC'].abs() > 1)
+
+    de_df.attrs['days_a'] = days_a
+    de_df.attrs['days_b'] = days_b
+
+    up = de_df[de_df['sig'] & (de_df['LFC'] > 0)]
+    dn = de_df[de_df['sig'] & (de_df['LFC'] < 0)]
+
+    print(f"  Upregulated   : {len(up)} genes")
+    print(f"  Downregulated: {len(dn)} genes")
+
+    return de_df, up, dn
+
+def volcano_plot(de_df, up, dn):
+    fig, axes = plt.subplots(1, 1, figsize=(6, 6))
+    ax = axes
+    ns = de_df[~de_df['sig']]
+    comp_days = f'{de_df.attrs['days_b']}vs{de_df.attrs['days_a']}'
+    comp_days.replace(" ","")
+
+    ax.scatter(ns['LFC'],  ns['-log10p'],  c='#bdc3c7', s=5,  alpha=0.4, label='Not significant')
+    ax.scatter(up['LFC'],  up['-log10p'],  c='#e74c3c', s=15, alpha=0.8, label=f'Up at {de_df.attrs['days_b']} ({len(up)})')
+    ax.scatter(dn['LFC'],  dn['-log10p'],  c='#3498db', s=15, alpha=0.8, label=f'Down at {de_df.attrs['days_b']} ({len(dn)})')
+
+    ax.axhline(-np.log10(0.05), color='gray', linestyle='--', linewidth=1, alpha=0.7)
+    ax.axvline( 1, color='#e74c3c', linestyle='--', linewidth=1, alpha=0.4)
+    ax.axvline(-1, color='#3498db', linestyle='--', linewidth=1, alpha=0.4)
+
+    for _, row in up.nlargest(4, '-log10p').iterrows():
+        ax.annotate(row['Gene'], (row['LFC'], row['-log10p']),
+             fontsize=7, color='#c0392b', xytext=(3, 2), textcoords='offset points')
+    for _, row in dn.nlargest(4, '-log10p').iterrows():
+        ax.annotate(row['Gene'], (row['LFC'], row['-log10p']),
+             fontsize=7, color='#2980b9', xytext=(3, 2), textcoords='offset points')
+    ax.set_xlabel(f'Log2 Fold Change ({de_df.attrs['days_b']} vs {de_df.attrs['days_a']})', fontsize=12)
+    ax.set_ylabel('-log10(p-value)', fontsize=12)
+    ax.set_title('Volcano Plot', fontsize=12)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    plt.savefig(f"volcanoPlotFor{comp_days}.png")
+
+path = "../data/"
+gene_df, sample_meta = significant_gene_filter(path, 
+                                omit_days=[6], min_val=0.1, 
+                                min_count_per_day=5,verbose=1)
+
+pca_t, Xpca = pca_analysis(gene_df)
 
 plot_pca_components(pca_t, Xpca, sample_meta, DAYS=[4,8])
+
+de_df, up, dn = differential_expression(gene_df, sample_meta, 
+                                        padj_max=0.05, 
+                                        days_a=[8], days_b=[10])
+volcano_plot(de_df, up, dn)
+print(up)
+
+
