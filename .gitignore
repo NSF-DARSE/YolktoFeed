@@ -1,6 +1,7 @@
 #data files
 data/
 *.csv
+results/
 
 #sphinx
 docs/build/
