@@ -1,20 +1,92 @@
-# Case Study: <Project Title>
+# YolktoFeed
 
-## Overview
-Brief description of the problem and stakeholders.
+Python package for preprocessing, PCA analysis, differential expression analysis, and volcano plot visualization.
 
-## Repository Structure
-- `src/` – source code
-- `docs/` – optional documentation (Sphinx scaffold)
-- `data/` – input/output data (if applicable)
+## Create Virtual Environment
 
-## Getting Started
-1. Clone the repository
-2. Create a feature branch
-3. Open a pull request early
+```bash
+python -m venv .venv
+```
 
-## Documentation
-This repository includes an optional Sphinx documentation scaffold.
+### Activate Environment
 
-## Contributing
-All changes must go through pull requests.
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+## Installation
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Example Workflow
+
+```python
+from yolktofeed.preprocessing import significant_gene_filter
+from yolktofeed.preprocessing import pca_analysis, plot_pca_components
+from yolktofeed.preprocessing import differential_expression
+from yolktofeed.plot2d import volcano_plot
+from yolktofeed.plot2d import updnRegulatedGenes
+
+path = </path/to/Liver_HEIDI_complete_ensembl_symbol.csv>
+
+gene_df, sample_meta = significant_gene_filter(
+    path,
+    omit_days=[6],
+    min_val=0.1,
+    min_count_per_day=5,
+    verbose=1
+)
+
+pca_t, Xpca = pca_analysis(gene_df)
+
+plot_pca_components(
+    pca_t,
+    Xpca,
+    sample_meta,
+    DAYS=[18, 20]
+)
+
+de_df, up, dn = differential_expression(
+    gene_df,
+    sample_meta,
+    padj_max=0.05,
+    days_a=[18],
+    days_b=[20]
+)
+
+volcano_plot(de_df, up, dn)
+
+updnRegulatedGenes(de_df, up, dn)
+```
+
+## Features
+
+* Gene filtering and preprocessing
+* PCA analysis and visualization
+* Differential expression analysis
+* Volcano plot generation
+* Up/down-regulated gene summary tables
+
+## Development
+
+Run tests:
+
+```bash
+pytest
+```
+
+Build package:
+
+```bash
+python -m build
+```
