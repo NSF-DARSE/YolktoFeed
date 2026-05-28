@@ -32,9 +32,9 @@ pip install -e ".[dev]"
 
 ```python
 from yolktofeed.preprocessing import significant_gene_filter
-from yolktofeed.preprocessing import pca_analysis, plot_pca_components
+from yolktofeed.preprocessing import pca_analysis
 from yolktofeed.preprocessing import differential_expression
-from yolktofeed.plot2d import volcano_plot
+from yolktofeed.plot2d import plot_pca_components, volcano_plot
 from yolktofeed.plot2d import updnRegulatedGenes
 
 path = </path/to/Liver_HEIDI_complete_ensembl_symbol.csv>
