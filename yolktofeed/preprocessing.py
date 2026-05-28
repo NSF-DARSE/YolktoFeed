@@ -111,7 +111,6 @@ def pca_analysis(df_filtered):
         
     Example:
         >>> Xpca, pca_t = pca_analysis(df_filtered)
-    
     """
     
     expr = df_filtered.copy()
@@ -178,13 +177,24 @@ def differential_expression(df_filtered, sample_meta, padj_max=0.05,
         a = log_expr.loc[g, day_a_samples].values.astype(float)
         b = log_expr.loc[g, day_b_samples].values.astype(float)
 
+        nan_a = np.isnan(a).sum()
+        nan_b = np.isnan(b).sum()
+        if nan_a > 0 or nan_b > 0:
+            print(f"{g}: NaNs in a={nan_a}, b={nan_b}")
+            
+    
+        #duplicate genes issues, this part would linearize array
         a = a[~np.isnan(a)]
         b = b[~np.isnan(b)]
-
+        
+        #sample size min of 2 required for test
         if len(a) < 2 or len(b) < 2:
             p = 1.0
+            print("!Warningsample size less that 2:", g)
+        #if varince is zero t-test is unstable
         elif np.var(a) == 0 or np.var(b) == 0:
             p = 1.0 if np.mean(a) == np.mean(b) else 0.0
+            print("equal variance case: ", g)
         else:
             res = stats.ttest_ind(a, b, equal_var=False)
             p = float(res.pvalue) if not np.isnan(res.pvalue) else 1.0
@@ -198,7 +208,7 @@ def differential_expression(df_filtered, sample_meta, padj_max=0.05,
     #benjamin-hochberg FDR false discover rate correction
     de_df['padj'] = multipletests(de_df['pval'], method='fdr_bh')[1]
 
-    de_df['-log10p'] = -np.log10(np.clip(de_df['pval'], 1e-300, 1))
+    de_df['-log10padj'] = -np.log10(np.clip(de_df['padj'], 1e-300, 1))
     de_df['sig']     = (de_df['padj'] < padj_max) & (de_df['LFC'].abs() > 1)
 
     de_df.attrs['days_a'] = days_a
@@ -214,18 +224,20 @@ def differential_expression(df_filtered, sample_meta, padj_max=0.05,
 
 
 path = "../data/"
+
 gene_df, sample_meta = significant_gene_filter(path, 
                                 omit_days=[6], min_val=0.1, 
                                 min_count_per_day=5,verbose=1)
 
 pca_t, Xpca = pca_analysis(gene_df)
 
-plot_pca_components(pca_t, Xpca, sample_meta, DAYS=[4,8])
+plot_pca_components(pca_t, Xpca, sample_meta, DAYS=[18,20])
 
-#de_df, up, dn = differential_expression(gene_df, sample_meta, 
-#                                        padj_max=0.05, 
-#                                        days_a=[4], days_b=[8])
-#volcano_plot(de_df, up, dn)
+de_df, up, dn = differential_expression(gene_df, sample_meta, 
+                                        padj_max=0.05, 
+                                        days_a=[18], days_b=[20])
+volcano_plot(de_df, up, dn)
+
+updnRegulatedGenes(de_df, up, dn)
 #print(up)
-
 

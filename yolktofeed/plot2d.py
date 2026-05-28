@@ -17,7 +17,7 @@ def plot_pca_components(pca_t, Xpca, sample_meta, DAYS: list):
         20: '#2c3e50',   # dark navy
         }
 
-    fig, axes = plt.subplots(1, 1, figsize=(8,8))
+    fig, axes = plt.subplots(1, 1, figsize=(8,4))
     fig.suptitle('PC1 vs PC2', fontsize=14, fontweight='bold')
 
     ax = axes
@@ -37,7 +37,7 @@ def plot_pca_components(pca_t, Xpca, sample_meta, DAYS: list):
     
     
     plt.tight_layout()
-    plt.savefig(f"results/pca_components_in{DAYS}.pdf".replace(" ",""))
+    plt.savefig(f"results/pca_components_in{DAYS}.png".replace(" ",""))
 
 
 def volcano_plot(de_df, up, dn):
@@ -49,23 +49,46 @@ def volcano_plot(de_df, up, dn):
     comp_days = f'{de_df.attrs['days_b']}vs{de_df.attrs['days_a']}'
     comp_days.replace(" ","")
 
-    ax.scatter(ns['LFC'],  ns['-log10p'],  c='#bdc3c7', s=5,  alpha=0.4, label='Not significant')
-    ax.scatter(up['LFC'],  up['-log10p'],  c='#e74c3c', s=15, alpha=0.8, label=f'Up at {de_df.attrs['days_b']} ({len(up)})')
-    ax.scatter(dn['LFC'],  dn['-log10p'],  c='#3498db', s=15, alpha=0.8, label=f'Down at {de_df.attrs['days_b']} ({len(dn)})')
+    ax.scatter(ns['LFC'],  ns['-log10padj'],  c='#bdc3c7', s=5,  alpha=0.4, label='Not significant')
+    ax.scatter(up['LFC'],  up['-log10padj'],  c='#e74c3c', s=15, alpha=0.8, label=f'Up at {de_df.attrs['days_b']} ({len(up)})')
+    ax.scatter(dn['LFC'],  dn['-log10padj'],  c='#3498db', s=15, alpha=0.8, label=f'Down at {de_df.attrs['days_b']} ({len(dn)})')
 
     ax.axhline(-np.log10(0.05), color='gray', linestyle='--', linewidth=1, alpha=0.7)
     ax.axvline( 1, color='#e74c3c', linestyle='--', linewidth=1, alpha=0.4)
     ax.axvline(-1, color='#3498db', linestyle='--', linewidth=1, alpha=0.4)
 
-    for _, row in up.nlargest(4, '-log10p').iterrows():
-        ax.annotate(row['Gene'], (row['LFC'], row['-log10p']),
+    for _, row in up.nlargest(4, '-log10padj').iterrows():
+        ax.annotate(row['Gene'], (row['LFC'], row['-log10padj']),
              fontsize=7, color='#c0392b', xytext=(3, 2), textcoords='offset points')
-    for _, row in dn.nlargest(4, '-log10p').iterrows():
-        ax.annotate(row['Gene'], (row['LFC'], row['-log10p']),
+    for _, row in dn.nlargest(4, '-log10padj').iterrows():
+        ax.annotate(row['Gene'], (row['LFC'], row['-log10padj']),
              fontsize=7, color='#2980b9', xytext=(3, 2), textcoords='offset points')
     ax.set_xlabel(f'Log2 Fold Change ({de_df.attrs['days_b']} vs {de_df.attrs['days_a']})', fontsize=12)
-    ax.set_ylabel('-log10(p-value)', fontsize=12)
+    ax.set_ylabel('-log10(padj-value)', fontsize=12)
     ax.set_title('Volcano Plot', fontsize=12)
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
     plt.savefig(f"results/volcanoPlotFor{comp_days}.png")
+
+def updnRegulatedGenes(de_df, up, dn):
+    rc_update(rcParams)
+    comp_days = f'{de_df.attrs['days_b']}vs{de_df.attrs['days_a']}'
+    top_up = up.nlargest(10, '-log10padj')[['Gene', '-log10padj']]
+    top_dn = dn.nlargest(10, '-log10padj')[['Gene', '-log10padj']]
+
+    fig, axes = plt.subplots(1, 2, figsize=(6, 3))
+    axes[1].set_title("Top 10 Upregulated and Downregulated Genes", fontsize=10)
+    axes[0].axis('off')
+    axes[1].axis('off')
+    tbl_up = axes[0].table(cellText=top_up.round(3).values, 
+                           colLabels=['Upregulated Genes', '-Log padj'], 
+                           colWidths=[0.7, 0.3], loc='center')
+    tbl_dn = axes[1].table(cellText=top_dn.round(3).values, 
+                           colLabels=['Downregulated Genes', '-Log padj'], 
+                           colWidths=[0.7, 0.3], loc='center')
+    tbl_up.set_fontsize(10)
+    tbl_dn.set_fontsize(10)
+    tbl_up.auto_set_font_size(False)
+    tbl_dn.auto_set_font_size(False)
+    plt.tight_layout()
+    plt.savefig(f"results/DEgeneListFor{comp_days}.png")
