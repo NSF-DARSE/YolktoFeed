@@ -5,7 +5,7 @@ Python package for preprocessing, PCA analysis, differential expression analysis
 ## Create Virtual Environment
 
 ```bash
-python -m venv .venv
+python -m venv .binfo
 ```
 
 ### Activate Environment
@@ -13,13 +13,13 @@ python -m venv .venv
 Linux/macOS:
 
 ```bash
-source .venv/bin/activate
+source .binfo/bin/activate
 ```
 
 Windows PowerShell:
 
 ```powershell
-.venv\Scripts\Activate.ps1
+.binfo\Scripts\Activate.ps1
 ```
 
 ## Installation
