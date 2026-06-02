@@ -32,8 +32,8 @@ pip install -e ".[dev]"
 
 ```python
 from yolktofeed.preprocessing import significant_gene_filter
-from yolktofeed.preprocessing import pca_analysis
-from yolktofeed.preprocessing import differential_expression
+from yolktofeed.analysis import pca_analysis
+from yolktofeed.analysis import differential_expression
 from yolktofeed.plot2d import plot_pca_components, volcano_plot
 from yolktofeed.plot2d import updnRegulatedGenes
 
@@ -53,20 +53,20 @@ plot_pca_components(
     pca_t,
     Xpca,
     sample_meta,
-    DAYS=[18, 20]
+    DAYS=[4, 8]
 )
 
 de_df, up, dn = differential_expression(
     gene_df,
     sample_meta,
     padj_max=0.05,
-    days_a=[18],
-    days_b=[20]
+    days_a=[4],
+    days_b=[8]
 )
 
-volcano_plot(de_df, up, dn)
+volcano_plot(de_df, up, dn, sortBy='absLFC')
 
-updnRegulatedGenes(de_df, up, dn)
+updnRegulatedGenes(de_df, up, dn, sortBy='absLFC')
 ```
 
 ## Features
